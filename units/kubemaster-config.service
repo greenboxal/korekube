@@ -1,0 +1,14 @@
+[Unit]
+Description=Kubelet Master Config
+After=kubelet-config.service
+Requires=kubelet-config.service
+Before=kubelet.service
+
+[Service]
+Type=oneshot
+Environment=PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/bin
+ExecStart=/opt/korekube/bin/setup-master
+
+[Install]
+WantedBy=multi-user.target kubelet.service
+

@@ -1,0 +1,255 @@
+#!/bin/bash
+
+setup_base() {
+    echo "[+] Configuring kubernetes base..."
+
+    mkdir -p /etc/kubernetes
+    mkdir -p /etc/kubernetes/ssl
+
+    persist_ca
+}
+
+setup_kubelet() {
+    echo "[+] Configuring kubelet..."
+
+    mkdir -p /etc/kubernetes/manifests
+
+    issue_ssl worker system:node:$NODE_NAME system:nodes
+    write_kubeconfig worker
+}
+
+setup_kubeproxy() {
+    echo "[+] Configuring kube-proxy..."
+
+    issue_ssl proxy system:kube-proxy system:node-proxier
+    write_kubeconfig proxy
+    write_manifest kube-proxy <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-proxy
+    image: $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG
+    command:
+    - /hyperkube
+    - proxy
+    - --master=$KUBE_API_ENDPOINT
+    - --hostname-override=$NODE_NAME
+    - --cluster-cidr=$CLUSTER_POD_CIDR
+    - --kubeconfig=/etc/kubernetes/proxy-kubeconfig.yaml
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - mountPath: /etc/ssl/certs
+      name: "ssl-certs"
+    - mountPath: /etc/kubernetes/proxy-kubeconfig.yaml
+      name: "kubeconfig"
+      readOnly: true
+    - mountPath: /etc/kubernetes/ssl
+      name: "etc-kube-ssl"
+      readOnly: true
+  volumes:
+  - name: "ssl-certs"
+    hostPath:
+      path: "/usr/share/ca-certificates"
+  - name: "kubeconfig"
+    hostPath:
+      path: "/etc/kubernetes/proxy-kubeconfig.yaml"
+  - name: "etc-kube-ssl"
+    hostPath:
+      path: "/etc/kubernetes/ssl"
+EOF
+}
+
+setup_api_server() {
+    echo "[+] Configuring kube-apiserver..."
+
+    # FIXME: 10.100.0.1 should be the first host inside CLUSTER_SVC_CIDR
+    issue_ssl apiserver system:apiserver system:apiserver "\
+    DNS.1=kubernetes\n\
+    DNS.2=kubernetes.default\n\
+    DNS.3=kubernetes.default.svc\n\
+    DNS.4=kubernetes.default.svc.cluster.local\n\
+    DNS.5=$KUBE_API_DNS\n\
+    IP.1=10.100.0.1\n\
+    IP.2=$NODE_IP\n"
+
+    credstash_get service_account_key > /etc/kubernetes/service-account-key.pem
+    chmod 600 /etc/kubernetes/service-account-key.pem
+
+    write_manifest kube-apiserver <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-apiserver
+    image: $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG
+    command:
+    - /hyperkube
+    - apiserver
+    - --admission-control=Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,ResourceQuota
+    - --advertise-address=$EC2_PRIVATE_IP
+    - --allow-privileged=true
+    - --apiserver-count=3
+    - --audit-log-maxage=30
+    - --audit-log-maxbackup=3
+    - --audit-log-maxsize=100
+    - --audit-log-path=/var/log/audit.log
+    - --authorization-mode=Node,RBAC
+    - --bind-address=0.0.0.0
+    - --enable-swagger-ui=true
+    - --etcd-servers=http://127.0.0.1:2379
+    - --event-ttl=1h
+    - --insecure-bind-address=127.0.0.1
+    - --kubelet-certificate-authority=/etc/kubernetes/ssl/ca.pem
+    - --kubelet-client-certificate=/etc/kubernetes/ssl/apiserver.pem
+    - --kubelet-client-key=/etc/kubernetes/ssl/apiserver-key.pem
+    - --kubelet-https=true
+    - --kubelet-preferred-address-types=InternalIP
+    - --runtime-config=rbac.authorization.k8s.io/v1alpha1=true,batch/v2alpha1=true
+    - --service-cluster-ip-range=$CLUSTER_SVC_CIDR
+    - --service-node-port-range=30000-32767
+    - --service-account-key-file=/etc/kubernetes/service-account-key.pem
+    - --secure-port=443
+    - --client-ca-file=/etc/kubernetes/ssl/ca.pem
+    - --tls-ca-file=/etc/kubernetes/ssl/ca.pem
+    - --tls-cert-file=/etc/kubernetes/ssl/apiserver.pem
+    - --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
+    - --cloud-provider=aws
+    - --cloud-config=/etc/kubernetes/aws.ini
+    - --feature-gates=AllAlpha=true
+$(echo $APISERVER_ARGS | xargs -n 1 echo "    -")
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        port: 8080
+        path: /healthz
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+    ports:
+    - containerPort: 443
+      hostPort: 443
+      name: https
+    - containerPort: 8080
+      hostPort: 8080
+      name: local
+    volumeMounts:
+    - mountPath: /etc/kubernetes
+      name: kubernetes
+      readOnly: true
+    - mountPath: /etc/ssl/certs
+      name: ssl-certs-host
+      readOnly: true
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes
+    name: kubernetes
+  - hostPath:
+      path: /usr/share/ca-certificates
+    name: ssl-certs-host
+EOF
+}
+
+setup_cloud_controller() {
+    echo "[+] Skipping cloud-controller..."
+}
+
+setup_controller_manager() {
+    echo "[+] Configuring kube-controller-manager..."
+
+    persist_ca with-key
+    write_manifest kube-controller-manager <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-controller-manager
+  namespace: kube-system
+spec:
+  containers:
+  - name: kube-controller-manager
+    image: $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG
+    command:
+    - /hyperkube
+    - controller-manager
+    - --cluster-cidr=$CLUSTER_POD_CIDR
+    - --cluster-name=$CLUSTER_NAME
+    - --cluster-signing-cert-file=/etc/kubernetes/ssl/ca.pem
+    - --cluster-signing-key-file=/etc/kubernetes/ssl/ca-key.pem
+    - --allocate-node-cidrs
+    - --leader-elect=true
+    - --master=http://127.0.0.1:8080
+    - --service-cluster-ip-range=$CLUSTER_SVC_CIDR
+    - --service-account-private-key-file=/etc/kubernetes/service-account-key.pem
+    - --root-ca-file=/etc/kubernetes/ssl/ca.pem
+    - --cloud-provider=aws
+    - --cloud-config=/etc/kubernetes/aws.ini
+    - --feature-gates=AllAlpha=true
+    resources:
+      requests:
+        cpu: 200m
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: 10252
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+    volumeMounts:
+    - mountPath: /etc/kubernetes
+      name: kubernetes
+      readOnly: true
+    - mountPath: /etc/ssl/certs
+      name: ssl-certs-host
+      readOnly: true
+  hostNetwork: true
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes
+    name: kubernetes
+  - hostPath:
+      path: /usr/share/ca-certificates
+    name: ssl-certs-host
+EOF
+}
+
+setup_scheduler() {
+    echo "[+] Configuring kube-scheduler..."
+
+    write_manifest kube-scheduler <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-scheduler
+    image: $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG
+    command:
+    - /hyperkube
+    - scheduler
+    - --master=http://127.0.0.1:8080
+    - --feature-gates=AllAlpha=true
+    - --leader-elect=true
+    resources:
+      requests:
+        cpu: 100m
+    livenessProbe:
+      httpGet:
+        host: 127.0.0.1
+        path: /healthz
+        port: 10251
+      initialDelaySeconds: 15
+      timeoutSeconds: 15
+EOF
+}
+

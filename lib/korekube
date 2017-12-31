@@ -1,0 +1,15 @@
+#!/bin/bash
+
+. /opt/korekube/lib/config
+. /opt/korekube/lib/helpers
+. /opt/korekube/lib/aws
+. /opt/korekube/lib/ssl
+. /opt/korekube/lib/setup
+
+init() {
+    echo "[+] Initializing KoreKube..."
+    init_aws
+    init_config
+    init_ssl
+}
+

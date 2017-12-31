@@ -1,0 +1,18 @@
+#!/bin/bash
+
+. /opt/korekube/lib/korekube
+
+verify_guard worker
+
+echo "[+] Configuring kubernetes worker..."
+
+init
+setup_base
+setup_kubelet
+setup_kubeproxy
+setup_cloud_provider
+
+touch_guard worker
+
+echo "[+] Done..."
+

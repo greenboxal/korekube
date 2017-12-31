@@ -1,0 +1,34 @@
+#!/bin/bash
+
+AWS_METADATA_BASE=http://169.254.169.254/latest/meta-data
+
+query_aws_metadata() {
+    KEY=$1
+
+    curl -s $AWS_METADATA_BASE/$KEY
+}
+
+init_aws() {
+    echo "[+] Fetching AWS metadata..."
+
+    EC2_HOSTNAME=$(query_aws_metadata local-hostname)
+    EC2_PRIVATE_IP=$(query_aws_metadata local-ipv4)
+    EC2_AVAIL_ZONE=$(query_aws_metadata placement/availability-zone)
+    EC2_REGION="`echo \"$EC2_AVAIL_ZONE\" | sed -e 's:\([0-9][0-9]*\)[a-z]*\$:\\1:'`"
+
+    if [ -z "$NODE_NAME" ]; then
+        NODE_NAME="$EC2_HOSTNAME"
+    fi
+
+    if [ -z "$NODE_IP" ]; then
+        NODE_IP="$EC2_PRIVATE_IP"
+    fi
+}
+
+setup_cloud_provider() {
+    cat > /etc/kubernetes/aws.ini <<EOF
+[global]
+Zone=$EC2_AVAIL_ZONE
+KubernetesClusterID=$CLUSTER_NAME
+EOF
+}

@@ -1,0 +1,53 @@
+#!/bin/bash
+
+KUBE_API_DNS=
+KUBE_API_ENDPOINT=
+
+CLUSTER_NAME=k8s
+CLUSTER_POD_CIDR=10.110.0.0/16
+CLUSTER_SVC_CIDR=10.100.0.0/16
+CLUSTER_DNS_IP=10.100.0.2
+
+SSL_KEY_BITS=2048
+SSL_DAYS=365
+
+HYPERKUBE_IMAGE=quay.io/coreos/hyperkube
+HYPERKUBE_IMAGE_TAG=v1.7.11_coreos.0
+
+NODE_NAME=
+NODE_IP=
+NODE_TAINTS=
+NODE_LABELS=
+
+KUBELET_ARGS=
+APISERVER_ARGS=
+
+# Load configuration if available
+[ -f /etc/korekube-env ] && . /etc/korekube-env
+
+init_config() {
+    REQUIRED_CONFIG=(
+        CLUSTER_NAME
+        CLUSTER_POD_CIDR
+        CLUSTER_SVC_CIDR
+        CLUSTER_DNS_IP
+        NODE_NAME
+        NODE_IP
+        KUBE_API_ENDPOINT
+        SSL_KEY_BITS
+        SSL_DAYS
+        HYPERKUBE_IMAGE
+        HYPERKUBE_IMAGE_TAG
+    )
+
+    for name in "${REQUIRED_CONFIG[@]}"; do
+        success=true
+
+        if [ -z "${!name}" ]; then
+            echo "Missing config: $name"
+            success=
+        fi
+
+        [ -z "$success" ] && exit 1
+    done
+}

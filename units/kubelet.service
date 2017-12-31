@@ -1,0 +1,15 @@
+[Unit]
+Description=Kubelet
+Required=kubelet-config.service docker.service
+After=kubelet-config.service docker.service
+
+[Service]
+Environment=PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/bin
+ExecStart=/opt/korekube/bin/kubelet-wrapper
+ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

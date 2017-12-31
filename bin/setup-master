@@ -1,0 +1,18 @@
+#!/bin/bash
+
+. /opt/korekube/lib/korekube
+
+verify_guard master
+
+echo "[+] Configuring kubernetes master..."
+
+init
+setup_api_server
+setup_cloud_controller
+setup_controller_manager
+setup_scheduler
+
+touch_guard master
+
+echo "[+] Done..."
+

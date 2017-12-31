@@ -1,0 +1,11 @@
+[Unit]
+Description=Kubelet Worker Config
+
+[Service]
+Type=oneshot
+Environment=PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/bin
+ExecStart=/opt/korekube/bin/setup-worker
+
+[Install]
+WantedBy=multi-user.target
+

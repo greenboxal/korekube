@@ -1,0 +1,74 @@
+#!/bin/bash
+
+teardown_ssl() {
+    [ "$SSL_DEBUG" == "yes" ] && return 0
+
+    rm -rf $SSL_WORKING_DIR
+}
+
+init_ssl() {
+    SSL_WORKING_DIR=$(mktemp -d)
+    SSL_CA_CERT=$SSL_WORKING_DIR/ca.pem
+    SSL_CA_KEY=$SSL_WORKING_DIR/ca-key.pem
+
+    # Ensure we cleanup our shit afterwards
+    trap teardown_ssl EXIT
+
+    credstash_get ca > $SSL_CA_CERT
+    credstash_get ca_key > $SSL_CA_KEY
+}
+
+issue_ssl() {
+    NAME=$1
+    CN=$2
+    O=$3
+    ALT_NAMES=$4
+    SUBJECT="/CN=$CN/O=$O"
+
+    echo "[+] Issuing certificate $NAME... ($SUBJECT)"
+
+    CSR_FILE=$SSL_WORKING_DIR/$NAME.csr
+    CNF_FILE=$SSL_WORKING_DIR/$NAME.cnf
+    CERT_FILE=$SSL_WORKING_DIR/$NAME.pem
+    KEY_FILE=$SSL_WORKING_DIR/$NAME-key.pem
+
+    if [ -z "$ALT_NAMES" ]; then
+        ALT_NAMES="\
+            DNS.1=$(hostname -s)\n\
+            DNS.2=$(hostname -f)\n\
+            DNS.3=$NODE_NAME\n\
+            IP.1=$NODE_IP\n"
+    fi
+
+    cat > $CNF_FILE <<EOF
+[req]
+req_extensions = v3_req
+distinguished_name = req_distinguished_name
+[req_distinguished_name]
+CN=$CN
+O=$O
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+[alt_names]
+$(echo -e "$ALT_NAMES")
+EOF
+
+    openssl genrsa $SSL_KEY_BITS > $KEY_FILE
+    openssl req -new -key $KEY_FILE -out $CSR_FILE -config $CNF_FILE -subj $SUBJECT
+    openssl x509 -req -in $CSR_FILE -CA $SSL_CA_CERT -CAkey $SSL_CA_KEY -CAcreateserial -out $CERT_FILE -days $SSL_DAYS -extensions v3_req -extfile $CNF_FILE
+
+    cp $CERT_FILE /etc/kubernetes/ssl/$NAME.pem
+    cp $KEY_FILE /etc/kubernetes/ssl/$NAME-key.pem
+}
+
+persist_ca() {
+    cp $SSL_CA_CERT /etc/kubernetes/ssl/ca.pem
+
+    if [ "$1" = "with-key" ]; then
+        cp $SSL_CA_KEY /etc/kubernetes/ssl/ca-key.pem
+    fi
+}
+

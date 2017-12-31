@@ -1,0 +1,80 @@
+#!/bin/bash
+
+set -x
+
+. /opt/korekube/lib/korekube
+
+# Load and validate config
+init
+
+# Create necessary dirs if they don't exist
+mkdir -p /var/lib/docker
+mkdir -p /var/lib/kubelet
+mkdir -p /run/kubelet
+mkdir -p /var/log/containers
+mkdir -p /opt/cni/bin
+mkdir -p /etc/cni/net.d
+
+EXTRA_ARGS=
+
+if [ "$NODE_LABELS" != "" ]; then
+        EXTRA_ARGS="--node-labels $NODE_LABELS $EXTRA_ARGS"
+fi
+
+if [ "$NODE_TAINTS" != "" ]; then
+        EXTRA_ARGS="--register-with-taints $NODE_TAINTS $EXTRA_ARGS"
+fi
+
+exec /usr/bin/rkt run \
+    --trust-keys-from-https \
+    --uuid-file-save=/var/run/kubelet-pod.uuid \
+    --volume coreos-etc-kubernetes,kind=host,source=/etc/kubernetes,readOnly=false \
+    --volume coreos-etc-ssl-certs,kind=host,source=/etc/ssl/certs,readOnly=true \
+    --volume coreos-usr-share-certs,kind=host,source=/usr/share/ca-certificates,readOnly=true \
+    --volume coreos-var-lib-docker,kind=host,source=/var/lib/docker,readOnly=false \
+    --volume coreos-var-lib-kubelet,kind=host,source=/var/lib/kubelet,readOnly=false,recursive=true \
+    --volume coreos-var-log,kind=host,source=/var/log,readOnly=false \
+    --volume coreos-os-release,kind=host,source=/usr/lib/os-release,readOnly=true \
+    --volume coreos-run,kind=host,source=/run,readOnly=false \
+    --volume coreos-lib-modules,kind=host,source=/lib/modules,readOnly=true \
+    --volume dns,kind=host,source=/etc/resolv.conf \
+    --volume var-log,kind=host,source=/var/log \
+    --volume cni-bin,kind=host,source=/opt/cni/bin \
+    --volume cni-etc,kind=host,source=/etc/cni/net.d \
+    --mount volume=coreos-etc-kubernetes,target=/etc/kubernetes \
+    --mount volume=coreos-etc-ssl-certs,target=/etc/ssl/certs \
+    --mount volume=coreos-usr-share-certs,target=/usr/share/ca-certificates \
+    --mount volume=coreos-var-lib-docker,target=/var/lib/docker \
+    --mount volume=coreos-var-lib-kubelet,target=/var/lib/kubelet \
+    --mount volume=coreos-var-log,target=/var/log \
+    --mount volume=coreos-os-release,target=/etc/os-release \
+    --mount volume=coreos-run,target=/run \
+    --mount volume=coreos-lib-modules,target=/lib/modules \
+    --mount volume=dns,target=/etc/resolv.conf \
+    --mount volume=var-log,target=/var/log \
+    --mount volume=cni-bin,target=/opt/weave-net/bin \
+    --mount volume=cni-etc,target=/etc/cni/net.d \
+    --hosts-entry host \
+    --stage1-from-dir=stage1-fly.aci \
+    $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG \
+    --exec=/kubelet \
+    -- \
+    --api-servers=$KUBE_API_ENDPOINT \
+    --allow-privileged=true \
+    --register-node=true \
+    --container-runtime=docker \
+    --network-plugin=cni \
+    --cluster-dns=$CLUSTER_DNS_IP \
+    --cluster-domain=cluster.local \
+    --pod-manifest-path=/etc/kubernetes/manifests \
+    --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
+    --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
+    --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \
+    --cloud-provider=aws \
+    --cloud-config=/etc/kubernetes/aws.ini \
+    --hostname-override=$NODE_NAME \
+    --node-ip=$NODE_IP \
+    --feature-gates=AllAlpha=true \
+    --image-pull-progress-deadline=2m \
+    $EXTRA_ARGS
+

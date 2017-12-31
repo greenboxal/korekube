@@ -1,0 +1,50 @@
+#!/bin/bash
+
+verify_guard() {
+    NAME=/etc/kubernetes/.${1}_bootstrapped
+
+    [ -f $NAME ] && exit 0
+}
+
+touch_guard() {
+    NAME=/etc/kubernetes/.${1}_bootstrapped
+
+    touch $NAME
+}
+
+credstash_get() {
+    KEY=$1
+
+    credstash -r "$EC2_REGION" get "${CLUSTER_NAME}.${KEY}"
+}
+
+write_manifest() {
+    NAME=$1
+    
+    cat > /etc/kubernetes/manifests/$NAME.yaml
+}
+
+write_kubeconfig() {
+    NAME=$1
+
+    cat > /etc/kubernetes/$NAME-kubeconfig.yaml <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- name: $CLUSTER_NAME
+  cluster:
+    certificate-authority: /etc/kubernetes/ssl/ca.pem
+    server: $KUBE_API_ENDPOINT
+users:
+- name: $NAME
+  user:
+    client-certificate: /etc/kubernetes/ssl/$NAME.pem
+    client-key: /etc/kubernetes/ssl/$NAME-key.pem
+contexts:
+- context:
+    cluster: $CLUSTER_NAME
+    user: $NAME
+  name: default
+current-context: default
+EOF
+}
