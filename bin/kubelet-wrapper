@@ -59,22 +59,26 @@ exec /usr/bin/rkt run \
     $HYPERKUBE_IMAGE:$HYPERKUBE_IMAGE_TAG \
     --exec=/kubelet \
     -- \
-    --api-servers=$KUBE_API_ENDPOINT \
     --allow-privileged=true \
-    --register-node=true \
-    --container-runtime=docker \
-    --network-plugin=cni \
+    --anonymous-auth=false \
+    --authorization-mode=Webhook \
+    --client-ca-file=/etc/kubernetes/ssl/ca.pem \
     --cluster-dns=$CLUSTER_DNS_IP \
     --cluster-domain=cluster.local \
-    --pod-manifest-path=/etc/kubernetes/manifests \
+    --container-runtime=docker \
+    --hostname-override=$NODE_NAME \
+    --node-ip=$NODE_IP \
+    --image-pull-progress-deadline=2m \
     --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
+    --network-plugin=cni \
+    --pod-cidr=$CLUSTER_POD_CIDR \
+    --pod-manifest-path=/etc/kubernetes/manifests \
+    --register-node=true \
+    --require-kubeconfig \
+    --runtime-request-timeout=15m \
     --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
     --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \
     --cloud-provider=aws \
     --cloud-config=/etc/kubernetes/aws.ini \
-    --hostname-override=$NODE_NAME \
-    --node-ip=$NODE_IP \
-    --feature-gates=AllAlpha=true \
-    --image-pull-progress-deadline=2m \
     $EXTRA_ARGS
 

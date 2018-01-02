@@ -114,7 +114,7 @@ spec:
     - --kubelet-client-key=/etc/kubernetes/ssl/apiserver-key.pem
     - --kubelet-https=true
     - --kubelet-preferred-address-types=InternalIP
-    - --runtime-config=rbac.authorization.k8s.io/v1alpha1=true,batch/v2alpha1=true
+    - --runtime-config=api/all
     - --service-cluster-ip-range=$CLUSTER_SVC_CIDR
     - --service-node-port-range=30000-32767
     - --service-account-key-file=/etc/kubernetes/service-account-key.pem
@@ -125,7 +125,6 @@ spec:
     - --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
     - --cloud-provider=aws
     - --cloud-config=/etc/kubernetes/aws.ini
-    - --feature-gates=AllAlpha=true
 $(echo $APISERVER_ARGS | xargs -n 1 echo "    -")
     livenessProbe:
       httpGet:
@@ -183,15 +182,13 @@ spec:
     - --cluster-name=$CLUSTER_NAME
     - --cluster-signing-cert-file=/etc/kubernetes/ssl/ca.pem
     - --cluster-signing-key-file=/etc/kubernetes/ssl/ca-key.pem
-    - --allocate-node-cidrs
     - --leader-elect=true
     - --master=http://127.0.0.1:8080
+    - --root-ca-file=/etc/kubernetes/ssl/ca.pem
     - --service-cluster-ip-range=$CLUSTER_SVC_CIDR
     - --service-account-private-key-file=/etc/kubernetes/service-account-key.pem
-    - --root-ca-file=/etc/kubernetes/ssl/ca.pem
     - --cloud-provider=aws
     - --cloud-config=/etc/kubernetes/aws.ini
-    - --feature-gates=AllAlpha=true
     resources:
       requests:
         cpu: 200m
@@ -238,7 +235,6 @@ spec:
     - /hyperkube
     - scheduler
     - --master=http://127.0.0.1:8080
-    - --feature-gates=AllAlpha=true
     - --leader-elect=true
     resources:
       requests:
