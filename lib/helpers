@@ -18,6 +18,22 @@ credstash_get() {
     credstash -r "$EC2_REGION" get "${CLUSTER_NAME}.${KEY}"
 }
 
+credstash_get_file() {
+    KEY=$1
+    NAME=$2
+
+    credstash_get $KEY > $NAME
+    chmod 644 $NAME
+}
+
+credstash_get_secret() {
+    KEY=$1
+    NAME=$2
+
+    credstash_get $KEY > $NAME
+    chmod 600 $NAME
+}
+
 write_manifest() {
     NAME=$1
     

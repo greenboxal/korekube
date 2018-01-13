@@ -1,9 +1,11 @@
 #!/bin/bash
 
 teardown_ssl() {
-    [ "$SSL_DEBUG" == "yes" ] && return 0
-
-    rm -rf $SSL_WORKING_DIR
+    if [ "$SSL_DEBUG" == "yes" ]; then
+        echo "[DEBUG] SSL artifacts left at $SSL_WORKING_DIR"
+    else
+        rm -rf $SSL_WORKING_DIR
+    fi
 }
 
 init_ssl() {
@@ -14,8 +16,8 @@ init_ssl() {
     # Ensure we cleanup our shit afterwards
     trap teardown_ssl EXIT
 
-    credstash_get ca > $SSL_CA_CERT
-    credstash_get ca_key > $SSL_CA_KEY
+    credstash_get_file ca $SSL_CA_CERT
+    credstash_get_secret ca_key $SSL_CA_KEY
 }
 
 issue_ssl() {
@@ -59,6 +61,9 @@ EOF
     openssl genrsa $SSL_KEY_BITS > $KEY_FILE
     openssl req -new -key $KEY_FILE -out $CSR_FILE -config $CNF_FILE -subj $SUBJECT
     openssl x509 -req -in $CSR_FILE -CA $SSL_CA_CERT -CAkey $SSL_CA_KEY -CAcreateserial -out $CERT_FILE -days $SSL_DAYS -extensions v3_req -extfile $CNF_FILE
+
+    chmod 644 $CERT_FILE
+    chmod 600 $KEY_FILE
 
     cp $CERT_FILE /etc/kubernetes/ssl/$NAME.pem
     cp $KEY_FILE /etc/kubernetes/ssl/$NAME-key.pem

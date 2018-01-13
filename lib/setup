@@ -29,6 +29,8 @@ kind: Pod
 metadata:
   name: kube-proxy
   namespace: kube-system
+  labels:
+    k8s-app: kube-proxy
 spec:
   hostNetwork: true
   containers:
@@ -78,8 +80,7 @@ setup_api_server() {
     IP.1=10.100.0.1\n\
     IP.2=$NODE_IP\n"
 
-    credstash_get service_account_key > /etc/kubernetes/service-account-key.pem
-    chmod 600 /etc/kubernetes/service-account-key.pem
+    credstash_get_secret service_account_key /etc/kubernetes/service-account-key.pem
 
     write_manifest kube-apiserver <<EOF
 apiVersion: v1
@@ -87,6 +88,8 @@ kind: Pod
 metadata:
   name: kube-apiserver
   namespace: kube-system
+  labels:
+    k8s-app: kube-apiserver
 spec:
   hostNetwork: true
   containers:
@@ -125,6 +128,14 @@ spec:
     - --tls-private-key-file=/etc/kubernetes/ssl/apiserver-key.pem
     - --cloud-provider=aws
     - --cloud-config=/etc/kubernetes/aws.ini
+    - --requestheader-client-ca-file=/etc/kubernetes/ssl/ca.pem
+    - --requestheader-allowed-names=system:apiserver
+    - --requestheader-extra-headers-prefix=X-Remote-Extra-
+    - --requestheader-group-headers=X-Remote-Group
+    - --requestheader-username-headers=X-Remote-User
+    - --proxy-client-cert-file=/etc/kubernetes/ssl/apiserver.pem
+    - --proxy-client-key-file=/etc/kubernetes/ssl/apiserver-key.pem
+    - --external-hostname=$KUBE_API_DNS
 $(echo $APISERVER_ARGS | xargs -n 1 echo "    -")
     livenessProbe:
       httpGet:
@@ -171,6 +182,8 @@ kind: Pod
 metadata:
   name: kube-controller-manager
   namespace: kube-system
+  labels:
+    k8s-app: kube-controller-manager
 spec:
   containers:
   - name: kube-controller-manager
@@ -226,6 +239,8 @@ kind: Pod
 metadata:
   name: kube-scheduler
   namespace: kube-system
+  labels:
+    k8s-app: kube-scheduler
 spec:
   hostNetwork: true
   containers:
